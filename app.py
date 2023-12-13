@@ -6,18 +6,45 @@ gitlab_url = 'http://10.254.200.172:7575/'
 gitlab_token = 'glpat-_yiVys2hzu-uXnMstmqk'
 
 # Initialisation du client GitLab
-gl = gitlab.GitLab(gitlab_url, private_token=gitlab_token)
+gl = gitlab.Gitlab(gitlab_url, private_token=gitlab_token)
 
 # Fonction pour créer un nouvel utilisateur
-def create_user(username, email, password):
-    user_data = {
+def create_user(username, first_name, last_name, group_name):
+    # Générer une adresse e-mail
+    email = f'{username}@example.com'
+
+    # Vérification de l'existence de l'utilisateur par adresse e-mail
+    existing_users = gl.users.list(search=email)
+    
+    # Si des utilisateurs existent avec la même adresse e-mail, affiche un message et retourne
+    if existing_users:
+        print(f"L'utilisateur avec l'adresse e-mail {email} existe déjà.")
+        return
+
+    # Recherche du groupe existant
+    groups = gl.groups.list(all=True)
+    existing_group = next((group for group in groups if group.name == group_name), None)
+
+    # Si le groupe n'existe pas, le crée
+    if not existing_group:
+        group = gl.groups.create({'name': group_name, 'path': group_name})
+    else:
+        group = existing_group
+
+    # Création de l'utilisateur
+    user_attributes = {
         'username': username,
+        'name': f'{first_name} {last_name}',
         'email': email,
-        'password': password,
-        'reset_password': True
+        'password': 'Lannion1',  # Vous pouvez définir un mot de passe plus sécurisé
+        'skip_confirmation': True,
     }
-    user = gl.users.create(user_data)
-    return user
+    user = gl.users.create(user_attributes)
+
+    # Ajout de l'utilisateur au groupe
+    group.members.create({'user_id': user.id, 'access_level': 30})  # Access level 30 correspond à l'accès complet
+    print(f"Utilisateur {username} créé avec succès dans le groupe {group_name}.")
+
 
 # Fonction pour modifier les droits d'un utilisateur
 def modify_user_access(user_id, access_level):
@@ -40,22 +67,26 @@ def assign_user_to_project(user_id, project_id, access_level):
     project = gl.projects.get(project_id)
     project.members.create({'user_id': user_id, 'access_level': access_level})
 
-# Fonction principale
+
 def main():
- # Création d'un nouvel utilisateur
-    new_user = create_user('nouvel_utilisateur', 'nouvel_utilisateur@example.com', 'mot_de_passe')
+    with open('utilisateurs.csv', newline='') as csvfile:
+        reader = csv.DictReader(csvfile)
+        
+        # Vérifier si les colonnes nécessaires sont présentes dans le fichier CSV
+        required_columns = {'utilisateur', 'prenom', 'nom', 'groupe'}
+        if not required_columns.issubset(reader.fieldnames):
+            print("Erreur: Les colonnes nécessaires ne sont pas présentes dans le fichier CSV.")
+            return
 
- # Modification des droits de l'utilisateur
-    modify_user_access(new_user.id, gitlab.Access.MAINTAINER)
+        for row in reader:
+            create_user(row['utilisateur'], row['prenom'], row['nom'], row['groupe'])
+            print(f"Utilisateur {row['utilisateur']} créé avec succès dans le groupe {row['groupe']}.")
+        
+    
+    
+    # Modification des droits de l'utilisateur
+    #modify_user_access(new_user.id, gitlab.const.AccessLevel.MAINTAINER)
 
- # Lecture d'un fichier CSV pour créer des projets et affecter des utilisateurs
- #with open('projets_utilisateurs.csv', 'r') as csvfile:
- #csvreader = csv.reader(csvfile)
- #for row in csvreader:
- #project_name, project_description, username, access_level = row
- #project = create_project(project_name, project_description)
- #user = gl.users.get(username)
- #assign_user_to_project(user.id, project.id, access_level)
 
 if __name__ == '__main__':
- main()
+    main()
